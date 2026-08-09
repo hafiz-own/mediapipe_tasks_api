@@ -1,0 +1,202 @@
+import argparse
+import cv2
+import time
+import sys
+import os
+import numpy as np
+
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+import math
+
+# Ensure we can import utils when running from the scripts/ directory
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+sys.path.append(PROJECT_ROOT)
+
+from utils import draw_holistic_landmarks
+
+def run_image_mode(model_path, input_path, output_dir):
+    print(f"Running Image Mode on {input_path}")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    absolute_model_path = os.path.abspath(model_path)
+    absolute_input_path = os.path.abspath(input_path)
+    
+    base_options = python.BaseOptions(
+        model_asset_path=absolute_model_path,
+        delegate=python.BaseOptions.Delegate.CPU
+    )
+    options = vision.HolisticLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.IMAGE
+    )
+
+    with vision.HolisticLandmarker.create_from_options(options) as landmarker:
+        # Load the input image
+        mp_image = mp.Image.create_from_file(absolute_input_path)
+        
+        # Detect holistic landmarks
+        detection_result = landmarker.detect(mp_image)
+        
+        # Process and display the result
+        annotated_image = draw_holistic_landmarks(mp_image.numpy_view(), detection_result)
+        annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+        
+        # Save output
+        filename = os.path.basename(input_path)
+        out_path = os.path.join(output_dir, f"annotated_{filename}")
+        cv2.imwrite(out_path, annotated_image_bgr)
+        print(f"Saved annotated image to: {out_path}")
+
+def run_video_mode(model_path, input_path, output_dir):
+    print(f"Running Video Mode on {input_path}")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    absolute_model_path = os.path.abspath(model_path)
+    absolute_input_path = os.path.abspath(input_path)
+    
+    base_options = python.BaseOptions(
+        model_asset_path=absolute_model_path,
+        delegate=python.BaseOptions.Delegate.CPU
+    )
+    options = vision.HolisticLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.VIDEO
+    )
+
+    with vision.HolisticLandmarker.create_from_options(options) as landmarker:
+        cap = cv2.VideoCapture(absolute_input_path)
+        if not cap.isOpened():
+            print(f"Error opening video file {input_path}")
+            return
+            
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Setup VideoWriter
+        filename = os.path.basename(input_path)
+        out_path = os.path.join(output_dir, f"annotated_{filename}")
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+        
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+            
+            # Calculate timestamp in milliseconds
+            frame_timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
+            if frame_timestamp_ms == 0 and cap.get(cv2.CAP_PROP_POS_FRAMES) > 1:
+                 # fallback for sometimes buggy pos_msec
+                 frame_timestamp_ms = int((cap.get(cv2.CAP_PROP_POS_FRAMES) / fps) * 1000)
+            
+            # Detect
+            detection_result = landmarker.detect_for_video(mp_image, frame_timestamp_ms)
+            
+            # Draw
+            annotated_image = draw_holistic_landmarks(frame_rgb, detection_result)
+            annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+            
+            out.write(annotated_image_bgr)
+
+        cap.release()
+        out.release()
+        print(f"Saved annotated video to: {out_path}")
+
+# Global variables for live stream callback
+latest_result = None
+new_result_available = False
+
+def update_result(result: vision.HolisticLandmarkerResult, output_image: mp.Image, timestamp_ms: int):
+    global latest_result, new_result_available
+    latest_result = result
+    new_result_available = True
+
+def run_live_mode(model_path):
+    print("Running Live Stream Mode. Press 'q' to exit.")
+    
+    absolute_model_path = os.path.abspath(model_path)
+    
+    base_options = python.BaseOptions(
+        model_asset_path=absolute_model_path,
+        delegate=python.BaseOptions.Delegate.CPU
+    )
+    options = vision.HolisticLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.LIVE_STREAM,
+        result_callback=update_result
+    )
+
+    global latest_result, new_result_available
+    
+    with vision.HolisticLandmarker.create_from_options(options) as landmarker:
+        cap = cv2.VideoCapture(0)
+        
+        if not cap.isOpened():
+            print("Error: Could not open webcam.")
+            return
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                print("Error reading from webcam.")
+                break
+                
+            # Flip frame horizontally for a more intuitive selfie-view
+            frame = cv2.flip(frame, 1)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+            
+            frame_timestamp_ms = int(time.time() * 1000)
+            
+            # Process asynchronously
+            landmarker.detect_async(mp_image, frame_timestamp_ms)
+            
+            # Draw if we have a result
+            if new_result_available and latest_result:
+                annotated_image = draw_holistic_landmarks(frame_rgb, latest_result)
+                display_image = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+                new_result_available = False
+            else:
+                display_image = frame
+                
+            cv2.imshow('MediaPipe Holistic Landmarker - Live', display_image)
+            
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
+
+def main():
+    parser = argparse.ArgumentParser(description="MediaPipe Holistic Landmarker using Tasks API")
+    parser.add_argument("--mode", type=str, required=True, choices=["image", "video", "live"],
+                        help="Running mode: image, video, or live")
+    parser.add_argument("--input", type=str, default="",
+                        help="Path to the input image or video file (required for image/video modes)")
+    parser.add_argument("--model", type=str, default=os.path.join(PROJECT_ROOT, "models/holistic_landmarker.task"),
+                        help="Path to the holistic_landmarker.task file")
+    parser.add_argument("--output_dir", type=str, default="output",
+                        help="Directory to save the generated outputs (for image/video mode)")
+    
+    args = parser.parse_args()
+
+    if args.mode in ["image", "video"] and not args.input:
+        print(f"Error: --input is required when using mode '{args.mode}'.")
+        sys.exit(1)
+
+    if args.mode == "image":
+        run_image_mode(args.model, args.input, args.output_dir)
+    elif args.mode == "video":
+        run_video_mode(args.model, args.input, args.output_dir)
+    elif args.mode == "live":
+        run_live_mode(args.model)
+
+if __name__ == "__main__":
+    main()
