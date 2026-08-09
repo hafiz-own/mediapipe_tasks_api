@@ -40,18 +40,21 @@ def main():
     parser.add_argument("--visual_mode", type=str, default="blur", choices=["blur", "desaturate", "overlay"],
                         help="How to visualize the segmentation (blur, desaturate, overlay)")
     
+    parser.add_argument("--mode", type=str, choices=["image", "video", "live", "auto"], default="auto",
+                        help="Processing mode (default: auto). Auto detects based on file extension.")
+    
     # Model Specific Hyperparameters
     parser.add_argument("--output_category_mask", action="store_true", default=True,
                         help="Output category mask (must be True for visualization)")
-    parser.add_argument("--output_confidence_masks", action="store_true",
-                        help="Output confidence masks")
+    parser.add_argument("--output_confidence_masks", action="store_true", default=False,
+                        help="Whether to output confidence masks")
                         
     args = parser.parse_args()
     
-    if not args.live and not args.input:
-        parser.error("You must provide either --input or --live.")
+    if not args.live and not args.input and args.mode != "live":
+        parser.error("You must provide either --input or set --mode live / --live.")
         
-    mode = "live" if args.live else "auto"
+    mode = "live" if args.live else args.mode
         
     # Dynamically inject the visual mode into the drawing callback
     visualizer = partial(draw_segmentation_result, visual_mode=args.visual_mode)

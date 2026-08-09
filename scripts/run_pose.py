@@ -35,6 +35,9 @@ def main():
     parser.add_argument("--output_dir", type=str, default=DEFAULT_OUTPUT,
                         help="Directory to save the generated outputs")
     
+    parser.add_argument("--mode", type=str, choices=["image", "video", "live", "auto"], default="auto",
+                        help="Processing mode (default: auto). Auto detects based on file extension.")
+    
     # Model Specific Hyperparameters
     parser.add_argument("--num_poses", type=int, default=1,
                         help="Maximum number of poses to detect")
@@ -43,16 +46,16 @@ def main():
     parser.add_argument("--min_pose_presence_confidence", type=float, default=0.5,
                         help="Confidence threshold for pose presence")
     parser.add_argument("--min_tracking_confidence", type=float, default=0.5,
-                        help="Confidence threshold for pose tracking")
+                        help="Confidence threshold for tracking")
     parser.add_argument("--output_segmentation_masks", action="store_true",
                         help="Output segmentation masks (default False)")
                         
     args = parser.parse_args()
     
-    if not args.live and not args.input:
-        parser.error("You must provide either --input or --live.")
+    if not args.live and not args.input and args.mode != "live":
+        parser.error("You must provide either --input or set --mode live / --live.")
         
-    mode = "live" if args.live else "auto"
+    mode = "live" if args.live else args.mode
         
     runner = MediaPipeRunner(
         task_class=vision.PoseLandmarker,
