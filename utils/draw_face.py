@@ -26,3 +26,8 @@ def draw_face_landmarks(rgb_image, face_landmarks_list):
             connection_drawing_spec=scale_connection_spec(drawing_styles.get_default_face_mesh_tesselation_style(), face_line_scale)
         )
     return annotated_image
+
+def draw_face_result(rgb_image, detection_result):
+    if not detection_result.face_landmarks:
+        return rgb_image
+    return draw_face_landmarks(rgb_image, detection_result.face_landmarks)

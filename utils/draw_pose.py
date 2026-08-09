@@ -22,3 +22,8 @@ def draw_pose_landmarks(rgb_image, pose_landmarks_list):
             landmark_drawing_spec=scale_landmark_spec(drawing_styles.get_default_pose_landmarks_style(), dot_scale)
         )
     return annotated_image
+
+def draw_pose_result(rgb_image, detection_result):
+    if not detection_result.pose_landmarks:
+        return rgb_image
+    return draw_pose_landmarks(rgb_image, detection_result.pose_landmarks)

@@ -26,3 +26,8 @@ def draw_hand_landmarks(rgb_image, hand_landmarks_list):
             connection_drawing_spec=scale_connection_spec(drawing_styles.get_default_hand_connections_style(), hand_line_scale)
         )
     return annotated_image
+
+def draw_hand_result(rgb_image, detection_result):
+    if not detection_result.hand_landmarks:
+        return rgb_image
+    return draw_hand_landmarks(rgb_image, detection_result.hand_landmarks)
