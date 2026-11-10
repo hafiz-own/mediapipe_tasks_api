@@ -13,8 +13,10 @@ build/
 dist/
 *.egg-info/
 
-# VSCode
+# Editors
 .vscode/
+*.swp
+*.bak
 
 output/
 .design/

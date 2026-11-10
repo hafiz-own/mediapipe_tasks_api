@@ -1,0 +1,19 @@
+[project]
+name = "mediapipe-tasks-api"
+version = "0.2.0"
+description = "MediaPipe Tasks vision runners (image, video, folder, webcam) and the PSL background augmenter. CPU only."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    # Pinned to match signbase-psl exactly, so landmarks are identical in both repos.
+    # Newer MediaPipe (1.x) changes landmarks slightly and needs a workaround; see docs/bug_resolutions.md.
+    "mediapipe==0.10.35",
+    "numpy==1.26.4",
+    # MediaPipe itself needs opencv-contrib-python. Do NOT also add opencv-python:
+    # both install the same cv2 module and overwrite each other. 4.12+ requires numpy 2.
+    "opencv-contrib-python>=4.8.0,<4.12",
+]
+
+[tool.uv]
+# Scripts are run directly (uv run python scripts/...), not installed as a package.
+package = false
