@@ -49,8 +49,6 @@ uv run python scripts/psl_augmenter.py --input data/signer.mp4 --bg data/market.
 
 `--bg` takes an image, a video (it loops), or `solid_green` / `solid_gray`. Options: `--ema 0.7`, `--feather 21` (odd), `--invert_mask`.
 
-`scripts/task1_mask.py --input clip.mp4 [--frame N]` saves the raw confidence masks of one frame, to check which mask index is the person.
-
 ## 4. Why CPU only, and why these versions
 
 - **CPU only.** The GPU path was tested on 2026-11-10 (MX550 and Intel iGPU). Holistic crashes on the GPU with MediaPipe 0.10.35. With 1.2.2 it ran, but it was slower than CPU, used more CPU, and shifted landmarks (pose about 10 px). Details are in `docs/bug_resolutions.md`.
@@ -60,7 +58,7 @@ uv run python scripts/psl_augmenter.py --input data/signer.mp4 --bg data/market.
 
 ## 5. Repository layout
 
-- `scripts/`: the runners above, the augmenter and `task1_mask.py`.
+- `scripts/`: the runners above and the augmenter.
 - `utils/pipeline.py`: `MediaPipeRunner`, the shared engine (modes, file I/O, webcam).
 - `utils/draw_*.py`: drawing helpers (scaled for 4K, handle holistic's flat landmark lists).
 - `models/`: the downloaded `.task` / `.tflite` files (`download_models.sh`).
