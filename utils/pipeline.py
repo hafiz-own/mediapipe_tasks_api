@@ -82,11 +82,18 @@ class MediaPipeRunner:
         print(f"Running Image Mode on {input_path}")
         options = self._get_options(vision.RunningMode.IMAGE)
 
+        # cv2.IMREAD_COLOR always gives 3-channel BGR: grayscale and PNGs with
+        # transparency are converted (MediaPipe models need exactly 3 channels).
+        bgr = cv2.imread(input_path, cv2.IMREAD_COLOR)
+        if bgr is None:
+            raise ValueError(f"Could not read image: {input_path}")
+        frame_rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
         with self.task_class.create_from_options(options) as model:
-            mp_image = mp.Image.create_from_file(input_path)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
             result = self._execute_task(model, vision.RunningMode.IMAGE, mp_image)
 
-            annotated_image = self.drawing_callback(mp_image.numpy_view(), result)
+            annotated_image = self.drawing_callback(frame_rgb, result)
             annotated_image_bgr = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
 
             out_path = os.path.join(output_dir, f"{self._prefix()}_annotated_{os.path.basename(input_path)}")
@@ -146,7 +153,7 @@ class MediaPipeRunner:
             self._latest = (result, frame)
 
     def _run_live(self):
-        print("Running Live Stream Mode. Press 'q' to exit.")
+        print("Running Live Stream Mode. Press 'q' or close the window to exit.")
         cap = cv2.VideoCapture(self.camera_index)
         if not cap.isOpened():
             print(f"Error: Could not open webcam {self.camera_index}.")
@@ -185,6 +192,9 @@ class MediaPipeRunner:
 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
+                # Closing the window with its X button also stops the loop
+                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                    break
 
         cap.release()
         cv2.destroyAllWindows()
@@ -196,7 +206,7 @@ class MediaPipeRunner:
         if not mime_type:
             if is_batch:
                 print(f"Skipping {input_path}: Unknown file type.")
-                return
+                return "skipped"
             raise ValueError(f"Unknown file type for {input_path}")
 
         is_image = mime_type.startswith('image')
@@ -205,15 +215,15 @@ class MediaPipeRunner:
         if not is_image and not is_video:
             if is_batch:
                 print(f"Skipping {input_path}: Not a valid image or video (detected {mime_type}).")
-                return
+                return "skipped"
             raise ValueError(f"Invalid file format for {input_path}. Must be image or video (detected {mime_type}).")
 
         if mode == "image" and not is_image:
             print(f"Warning: Mode is set to 'image' but '{input_path}' is a video. Skipping.")
-            return
+            return "skipped"
         if mode == "video" and not is_video:
             print(f"Warning: Mode is set to 'video' but '{input_path}' is an image. Skipping.")
-            return
+            return "skipped"
 
         os.makedirs(output_dir, exist_ok=True)
         target_mode = mode if mode != "auto" else ("image" if is_image else "video")
@@ -221,6 +231,7 @@ class MediaPipeRunner:
             self._run_image(input_path, output_dir)
         else:
             self._run_video(input_path, output_dir)
+        return "ok"
 
     def run(self, input_path=None, output_dir="output", mode="auto"):
         self._banner(mode)
@@ -242,12 +253,22 @@ class MediaPipeRunner:
             out_dir = os.path.join(output_base_dir, f"{folder_name}_annotated")
             print(f"Batch processing folder: {abs_input_path}")
             print(f"Outputs will be saved to: {out_dir}")
+            counts = {"ok": 0, "skipped": 0}
+            failed = []
             for root, _, files in os.walk(abs_input_path):
                 # Mirror sub-folders so files with the same name in different
                 # folders don't overwrite each other.
                 rel = os.path.relpath(root, abs_input_path)
                 target_dir = out_dir if rel == "." else os.path.join(out_dir, rel)
                 for file in sorted(files):
-                    self.process_file(os.path.join(root, file), target_dir, mode, is_batch=True)
+                    path = os.path.join(root, file)
+                    try:
+                        counts[self.process_file(path, target_dir, mode, is_batch=True)] += 1
+                    except Exception as e:  # one bad file must not stop the whole folder
+                        print(f"FAILED: {path}: {type(e).__name__}: {e}")
+                        failed.append(path)
+            print(f"\nFolder done: {counts['ok']} processed, {counts['skipped']} skipped, {len(failed)} failed.")
+            for path in failed:
+                print(f"  failed: {path}")
         else:
             self.process_file(abs_input_path, output_base_dir, mode, is_batch=False)

@@ -32,12 +32,16 @@ Every runner has the same options: `--input` (image, video or folder), `--live` 
 ```bash
 uv run python scripts/run_holistic.py --input data/sample.mp4     # one video
 uv run python scripts/run_hands.py --input data/my_dataset/       # whole folder (sub-folders kept)
-uv run python scripts/run_pose.py --live                          # webcam, press q to quit
+uv run python scripts/run_pose.py --live                          # webcam; press q or close the window to quit
 ```
 
 Each run prints what it used: model, `delegate=CPU`, MediaPipe version.
 
 Live mode does not mirror anything (not the frame the model sees, not the window), so left and right hands are correct.
+
+Holistic output draws the signer's **left hand in orange** and **right hand in light blue**, with a small key in the top-left corner. Left and right mean the signer's own hands, not the sides of the image.
+
+Folder runs keep going if a file fails, and finish with a summary (processed / skipped / failed).
 
 ## 3. PSL background augmenter
 
